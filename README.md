@@ -12,7 +12,7 @@
    ```bash
    git clone <repo_url>
    cd <repo_folder>
-2. Instalējiet librariesd:
+2. Instalējiet libraries:
 
    ```bash
    npm install
