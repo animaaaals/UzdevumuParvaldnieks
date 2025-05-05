@@ -10,8 +10,8 @@
 
 1. Klonējiet repozitoriju:
    ```bash
-   git clone <repo_url>
-   cd <repo_folder>
+   gh repo clone animaaaals/UzdevumuParvaldnieks
+   cd <UzdevumuParvaldnieks>
 2. Instalējiet libraries:
 
    ```bash
