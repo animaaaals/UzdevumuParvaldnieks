@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="lv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Informācijas panelis – Studentu Uzdevumu Pārvaldnieks</title>
+  <!-- Dark theme via Bootswatch Darkly -->
+  <link href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.0/dist/darkly/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { min-height: 100vh; display: flex; flex-direction: column; }
+    .content { flex: 1; }
+    .card-dark { background-color: #343a40; }
+  </style>
+</head>
+<body class="bg-dark text-light">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">Uzdevumu Pārvaldnieks</a>
+      <button class="btn btn-outline-light" id="logout_btn">Izrakstīties</button>
+    </div>
+  </nav>
+
+  <main class="container content">
+    <div class="row">
+      <div class="col-lg-4 mb-4">
+        <div class="card card-dark shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">Pievienot Uzdevumu</h5>
+            <form id="task_form">
+              <div class="mb-3">
+                <input id="task_title" class="form-control bg-secondary text-light border-0" placeholder="Nosaukums" required>
+              </div>
+              <div class="mb-3">
+                <textarea id="task_desc" class="form-control bg-secondary text-light border-0" placeholder="Apraksts"></textarea>
+              </div>
+              <div class="mb-3">
+                <select id="task_category" class="form-select bg-secondary text-light border-0">
+                  <option value="">Izvēlēties kategoriju</option>
+                </select>
+              </div>
+              <button class="btn btn-primary w-100">Pievienot</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="card card-dark shadow-sm mt-4">
+          <div class="card-body">
+            <h5 class="card-title">Filtri</h5>
+            <div class="mb-3">
+              <select id="filter_category" class="form-select bg-secondary text-light border-0">
+                <option value="">Visas kategorijas</option>
+              </select>
+            </div>
+            <div class="form-check form-switch mb-3">
+              <input id="filter_completed" type="checkbox" class="form-check-input">
+              <label class="form-check-label" for="filter_completed">Rādīt tikai pabeigtos</label>
+            </div>
+            <button id="apply_filters" class="btn btn-outline-light w-100">Pielietot filtrus</button>
+          </div>
+        </div>
+
+        <div class="card card-dark shadow-sm mt-4">
+          <div class="card-body">
+            <h5 class="card-title">Statistika</h5>
+            <canvas id="stats_chart" width="300" height="300"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-8">
+        <ul id="task_list" class="list-group"></ul>
+      </div>
+    </div>
+  </main>
+
+  <footer class="bg-dark text-center text-muted py-2">
+    &copy; 2025 Studentu Uzdevumu Pārvaldnieks
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    // Memory array - filtrēšanai un statistikai
+    let tasks = [], categories = [], chart;
+
+    // Ielādē kategorijas izkrītošajā izvēlnē
+    async function load_categories() {
+      categories = await (await fetch('/api/tasks/categories')).json();
+      const add_cat = document.getElementById('task_category');
+      const filter_cat = document.getElementById('filter_category');
+      categories.forEach(c => {
+        add_cat.add(new Option(c.name, c.id));
+        filter_cat.add(new Option(c.name, c.id));
+      });
+    }
+
+    // Iegūst un parāda uzdevumus
+    async function load_tasks() {
+      const params = new URLSearchParams();
+      if (filter_category.value) params.append('category', filter_category.value);
+      if (filter_completed.checked) params.append('completed', 'true');
+      tasks = await (await fetch('/api/tasks?' + params)).json();
+      render_tasks(); render_stats();
+    }
+
+    // Parāda uzdevumus kā kartītes
+    function render_tasks() {
+      task_list.innerHTML = '';
+      tasks.forEach(t => {
+        const li = document.createElement('li');
+        li.className = 'list-group-item mb-2 bg-secondary text-light border-0 rounded shadow-sm d-flex justify-content-between align-items-center';
+        li.innerHTML = `
+          <div>
+            <h6>${t.title}</h6>
+            <small class="text-muted">(${t.category_name||'Nav'})</small>
+            <p class="mb-1">${t.description||''}</p>
+          </div>
+          <div>
+            <button class="btn btn-sm btn-outline-light me-1" onclick="toggle_complete(${t.id},${t.completed})">
+              ${t.completed ? 'Atsaukt' : 'Pabeigt'}
+            </button>
+            <button class="btn btn-sm btn-outline-danger" onclick="delete_task(${t.id})">Dzēst</button>
+          </div>`;
+        task_list.append(li);
+      });
+    }
+
+    // Pi chart tumšajā režīmā
+    function render_stats() {
+      const done = tasks.filter(t => t.completed).length;
+      const pending = tasks.length - done;
+      if (chart) chart.destroy();
+      chart = new Chart(stats_chart, {
+        type: 'pie',
+        data: { labels: ['Pabeigti','Nepabeigti'], datasets: [{ data: [done, pending] }] }
+      });
+    }
+
+    // Formas apstrāde
+    task_form.onsubmit = async e => {
+      e.preventDefault();
+      await fetch('/api/tasks', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ title: task_title.value, description: task_desc.value, category_id: task_category.value })
+      });
+      task_form.reset(); load_tasks();
+    };
+
+    async function delete_task(id) {
+      await fetch('/api/tasks/'+id, { method: 'DELETE' }); load_tasks();
+    }
+
+    async function toggle_complete(id, done) {
+      const t = tasks.find(x => x.id === id);
+      await fetch('/api/tasks/'+id, {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ title: t.title, description: t.description, category_id: t.category_id, completed: !done })
+      }); load_tasks();
+    }
+
+    apply_filters.onclick = load_tasks;
+    logout_btn.onclick = async () => { await fetch('/api/auth/logout',{ method: 'POST' }); window.location = 'login.html'; };
+
+    // Inicializācija
+    load_categories().then(load_tasks);
+  </script>
+</body>
+</html>
